@@ -45,13 +45,6 @@ runs:
       with:
         python-version: ${{ inputs.python-version }}
 
-    - name: Checkout kubeflow/testing
-      uses: actions/checkout@v4
-      with:
-        repository: kubeflow/testing
-        path: .kubeflow-testing
-        sparse-checkout: hack/boilerplate
-
     - name: Run boilerplate check
       shell: bash
       env:
