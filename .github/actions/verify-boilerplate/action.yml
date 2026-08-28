@@ -59,7 +59,3 @@ runs:
 
         python "${GITHUB_ACTION_PATH}/../../../hack/boilerplate/boilerplate.py" "${ARGS[@]}"
 
-    - name: Cleanup
-      if: always()
-      shell: bash
-      run: rm -rf .kubeflow-testing
