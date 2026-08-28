@@ -55,18 +55,16 @@ runs:
     - name: Run boilerplate check
       shell: bash
       env:
-        BASE_REF: ${{ inputs.base-ref || github.base_ref || 'master' }}
+        BASE_REF: ${{ inputs.base-ref || github.base_ref || github.event.repository.default_branch || 'master' }}
         BOILERPLATE_DIR: ${{ inputs.boilerplate-dir }}
       run: |
         ARGS=("--base-ref" "${BASE_REF}")
 
         if [[ -n "${BOILERPLATE_DIR}" ]]; then
           ARGS+=("--boilerplate-dir" "${BOILERPLATE_DIR}")
-        else
-          ARGS+=("--boilerplate-dir" ".kubeflow-testing/hack/boilerplate")
         fi
 
-        python .kubeflow-testing/hack/boilerplate/boilerplate.py "${ARGS[@]}"
+        python "${GITHUB_ACTION_PATH}/../../../hack/boilerplate/boilerplate.py" "${ARGS[@]}"
 
     - name: Cleanup
       if: always()
