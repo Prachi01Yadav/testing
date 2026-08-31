@@ -67,11 +67,45 @@ runs:
         BASE_REF: ${{ inputs.base-ref || github.base_ref || github.event.repository.default_branch || 'master' }}
         BOILERPLATE_DIR: ${{ inputs.boilerplate-dir }}
       run: |
-        ARGS=("--base-ref" "${BASE_REF}")
+        set -euo pipefail
 
-        if [[ -n "${BOILERPLATE_DIR}" ]]; then
-          ARGS+=("--boilerplate-dir" "${BOILERPLATE_DIR}")
+        action_root="$(cd "${GITHUB_ACTION_PATH}/../../.." && pwd)"
+        script="${action_root}/hack/boilerplate/boilerplate.py"
+        if [[ ! -f "${script}" ]]; then
+          echo "::error::boilerplate.py not found at ${script}. The action" \
+               "expects to run from a checkout of kubeflow/testing."
+          exit 1
         fi
 
-        python "${GITHUB_ACTION_PATH}/../../../hack/boilerplate/boilerplate.py" "${ARGS[@]}"
+        base_reference="${BASE_REFERENCE#refs/heads/}"
+        if [[ -z "${base_reference}" ]]; then
+          echo "::error::No base branch could be determined. Pass the" \
+               "base-reference input explicitly."
+          exit 1
+        fi
+
+        root_directory="${ROOT_DIRECTORY:-${GITHUB_WORKSPACE}}"
+        if ! git -C "${root_directory}" rev-parse --git-dir >/dev/null 2>&1; then
+          echo "::error::${root_directory} is not a Git checkout. Run" \
+               "actions/checkout with fetch-depth: 0 before this action, or" \
+               "set the root-directory input."
+          exit 1
+        fi
+        root_directory="$(cd "${root_directory}" && pwd)"
+
+        if [[ -n "${BOILERPLATE_DIRECTORY}" ]]; then
+          if [[ ! -d "${BOILERPLATE_DIRECTORY}" ]]; then
+            echo "::error::boilerplate-directory ${BOILERPLATE_DIRECTORY}" \
+                 "does not exist."
+            exit 1
+          fi
+          boilerplate_directory="$(cd "${BOILERPLATE_DIRECTORY}" && pwd)"
+        else
+          boilerplate_directory="${action_root}/hack/boilerplate"
+        fi
+
+        python3 "${script}" \
+          --rootdir "${root_directory}" \
+          --boilerplate-dir "${boilerplate_directory}" \
+          --base-ref "${base_reference}"
 
