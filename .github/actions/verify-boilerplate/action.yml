@@ -14,9 +14,16 @@
 
 name: Verify Boilerplate Headers
 description: >
-  Verify that every source file carries the required Apache 2.0 copyright
-  header. Wraps hack/boilerplate/boilerplate.py from kubeflow/testing so
-  callers never need to vendor the script.
+  Verify Apache 2.0 copyright headers across a repository. Every source file
+  must match the boilerplate template once the copyright year is normalized
+  out; files added relative to the base branch must additionally use the
+  year-less header. Runs hack/boilerplate/boilerplate.py from the checkout of
+  kubeflow/testing that GitHub creates for this action, so the script version
+  always matches the reference the action is pinned to and callers never
+  vendor a copy.
+
+  The caller must check out its own repository before this action runs, using
+  fetch-depth: 0 so the base branch can be resolved.
 
 inputs:
   base-ref:
