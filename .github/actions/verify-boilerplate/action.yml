@@ -26,11 +26,13 @@ description: >
   fetch-depth: 0 so the base branch can be resolved.
 
 inputs:
-  base-ref:
+  base-reference:
     description: >
-      Base branch for new-file detection. Defaults to the pull-request base
-      branch (github.base_ref) so only changed/new files are flagged for
-      year-less header enforcement.
+      Base branch used for new-file detection. Defaults to the pull-request
+      base branch, then to the repository default branch, so the action works
+      on both pull_request and push events without per-repository
+      configuration. Note that this governs only the year-less rule for newly
+      added files; all files are checked for header match regardless.
     required: false
     default: ""
   boilerplate-dir:
