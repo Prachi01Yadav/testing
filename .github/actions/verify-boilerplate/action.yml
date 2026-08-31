@@ -35,10 +35,17 @@ inputs:
       added files; all files are checked for header match regardless.
     required: false
     default: ""
-  boilerplate-dir:
+  boilerplate-directory:
     description: >
-      Directory containing boilerplate template files (boilerplate.*.txt).
-      Leave empty to use the templates shipped with kubeflow/testing.
+      Directory containing the boilerplate template files (boilerplate.*.txt).
+      Leave empty to use the templates shipped alongside the script in
+      kubeflow/testing.
+    required: false
+    default: ""
+  root-directory:
+    description: >
+      Directory to scan. Leave empty to use the workspace root. Set this when
+      the caller checks its repository out into a subdirectory.
     required: false
     default: ""
   python-version:
