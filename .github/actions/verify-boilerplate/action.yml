@@ -42,7 +42,7 @@ inputs:
     required: false
     default: ""
   python-version:
-    description: Python version to use.
+    description: Python version used to run the checker.
     required: false
     default: "3.12"
 
