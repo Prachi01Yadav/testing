@@ -1,0 +1,182 @@
+# Copyright The Kubeflow Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Run Notebook
+description: >
+  Run a Jupyter notebook with Papermill and save the executed copy. An
+  optional diagnostics command can be injected so each caller emits its own
+  debugging output, such as pod logs or custom resource status.
+
+  The caller must check out its own repository before this action runs.
+
+inputs:
+  notebook:
+    description: >
+      Path to the input .ipynb file to execute. This is required and must
+      point to an existing Jupyter notebook.
+    required: true
+  output:
+    description: >
+      Path to save the executed notebook. The parent directory is created if
+      it does not exist. Defaults to artifacts/notebooks/<notebook file name>.
+    required: false
+    default: ""
+  timeout:
+    description: >
+      Papermill cell execution timeout in seconds. If a single cell takes
+      longer than this to execute, Papermill will raise a timeout error.
+    required: false
+    default: "600"
+  parameters:
+    description: >
+      Papermill parameter flags passed directly to the papermill command.
+      Use the -p flag for each parameter, e.g. "-p num_cpu 3 -p gpu 1".
+      Leave empty if the notebook does not require parameters.
+    required: false
+    default: ""
+  requirements:
+    description: >
+      Path to a requirements.txt file to install before running the
+      notebook. Leave empty if no additional packages are needed beyond
+      Papermill itself.
+    required: false
+    default: ""
+  on-failure:
+    description: >
+      Shell command that prints per-project diagnostics, e.g. Kubernetes pod
+      logs or custom resource status. diagnostics-when sets when it runs.
+      Leave empty to skip.
+    required: false
+    default: ""
+  diagnostics-when:
+    description: >
+      Set to failure to run the on-failure command only when the notebook
+      fails, or to always to run it after every notebook run.
+    required: false
+    default: "failure"
+  working-directory:
+    description: >
+      Directory in which the action's commands run. Relative notebook,
+      output and requirements paths are resolved from this directory.
+    required: false
+    default: "."
+  install-papermill:
+    description: >
+      Set to true to create an isolated virtual environment with pinned
+      papermill and ipykernel and run the notebook with it. Leave false to
+      use the papermill already on PATH.
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Install Papermill
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        INSTALL_PAPERMILL: ${{ inputs.install-papermill }}
+      run: |
+        set -euo pipefail
+
+        if [[ "${INSTALL_PAPERMILL}" == "false" ]]; then
+          exit 0
+        fi
+        if [[ "${INSTALL_PAPERMILL}" != "true" ]]; then
+          echo "::error::install-papermill must be 'true' or 'false'," \
+               "got '${INSTALL_PAPERMILL}'."
+          exit 1
+        fi
+
+        venv_directory="${RUNNER_TEMP}/run-notebook-venv"
+        python3 -m venv "${venv_directory}"
+        "${venv_directory}/bin/pip" install papermill==2.7.0 ipykernel==7.4.0
+        echo "${venv_directory}/bin" >> "${GITHUB_PATH}"
+
+    - name: Install additional requirements
+      if: ${{ inputs.requirements != '' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        REQUIREMENTS: ${{ inputs.requirements }}
+      run: |
+        set -euo pipefail
+
+        if [[ ! -f "${REQUIREMENTS}" ]]; then
+          echo "::error::requirements file '${REQUIREMENTS}' not found."
+          exit 1
+        fi
+        pip install -r "${REQUIREMENTS}"
+
+    - name: Run notebook
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        NOTEBOOK_INPUT: ${{ inputs.notebook }}
+        NOTEBOOK_OUTPUT: ${{ inputs.output }}
+        PAPERMILL_TIMEOUT: ${{ inputs.timeout }}
+        PAPERMILL_PARAMS: ${{ inputs.parameters }}
+        ON_FAILURE: ${{ inputs.on-failure }}
+        DIAGNOSTICS_WHEN: ${{ inputs.diagnostics-when }}
+      run: |
+        set -euo pipefail
+
+        if [[ "${DIAGNOSTICS_WHEN}" != "failure" && "${DIAGNOSTICS_WHEN}" != "always" ]]; then
+          echo "::error::diagnostics-when must be 'failure' or 'always'," \
+               "got '${DIAGNOSTICS_WHEN}'."
+          exit 1
+        fi
+
+        if ! command -v papermill >/dev/null 2>&1; then
+          echo "::error::papermill not found on PATH. Install papermill and" \
+               "ipykernel before this action, or set install-papermill to true."
+          exit 1
+        fi
+
+        if [[ ! -f "${NOTEBOOK_INPUT}" ]]; then
+          echo "::error::Notebook '${NOTEBOOK_INPUT}' not found."
+          exit 1
+        fi
+
+        # Papermill does not create parent directories for its output.
+        notebook_output="${NOTEBOOK_OUTPUT:-artifacts/notebooks/$(basename "${NOTEBOOK_INPUT}")}"
+        mkdir -p "$(dirname "${notebook_output}")"
+
+        run_diagnostics() {
+          if [[ -n "${ON_FAILURE}" ]]; then
+            echo "::group::Diagnostics"
+            eval "${ON_FAILURE}" || true
+            echo "::endgroup::"
+          fi
+        }
+
+        notebook_status=0
+        echo "::group::Papermill execution"
+        papermill "${NOTEBOOK_INPUT}" "${notebook_output}" \
+            ${PAPERMILL_PARAMS} \
+            --execution-timeout "${PAPERMILL_TIMEOUT}" || notebook_status=$?
+        echo "::endgroup::"
+
+        if [[ "${notebook_status}" -ne 0 ]]; then
+          echo "::error::Notebook execution failed."
+        fi
+
+        if [[ "${notebook_status}" -ne 0 || "${DIAGNOSTICS_WHEN}" == "always" ]]; then
+          run_diagnostics
+        fi
+
+        if [[ "${notebook_status}" -ne 0 ]]; then
+          exit 1
+        fi
+        echo "Notebook executed successfully."
