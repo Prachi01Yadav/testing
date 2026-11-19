@@ -1,0 +1,80 @@
+name: Test run-notebook action
+
+on:
+  push:
+    branches:
+      - test/run-notebook-action
+  workflow_dispatch:
+
+jobs:
+  test-install-papermill-and-all-inputs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run notebook with install-papermill, requirements, default output, and diagnostics-when=always
+        uses: ./.github/actions/run-notebook
+        with:
+          notebook: test-notebooks/sample.ipynb
+          parameters: "-p greeting kubeflow -p count 5"
+          requirements: test-notebooks/requirements.txt
+          install-papermill: "true"
+          on-failure: "echo 'Diagnostics executed in always mode' && touch artifacts/diag-always.txt"
+          diagnostics-when: "always"
+
+      - name: Verify default output and always diagnostics
+        run: |
+          test -f artifacts/notebooks/sample.ipynb
+          grep -q "kubeflow x 5" artifacts/notebooks/sample.ipynb
+          test -f artifacts/diag-always.txt
+
+      - name: Run notebook with working-directory and custom nested output
+        uses: ./.github/actions/run-notebook
+        with:
+          working-directory: test-notebooks/sub
+          notebook: sub_sample.ipynb
+          output: custom/nested/out.ipynb
+          parameters: "-p count 5"
+
+      - name: Verify working-directory output
+        run: |
+          test -f test-notebooks/sub/custom/nested/out.ipynb
+
+      - name: Run failing notebook to verify default diagnostics-when=failure hook
+        id: failing_run
+        continue-on-error: true
+        uses: ./.github/actions/run-notebook
+        with:
+          notebook: test-notebooks/sample.ipynb
+          output: artifacts/notebooks/failing.ipynb
+          parameters: "-p count 99"
+          on-failure: "echo 'Diagnostics executed on failure' && touch artifacts/diag-on-failure.txt"
+
+      - name: Verify failing notebook triggered on-failure diagnostics
+        run: |
+          test "${{ steps.failing_run.outcome }}" = "failure"
+          test -f artifacts/diag-on-failure.txt
+
+  test-caller-environment:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up caller Python environment with papermill and ipykernel
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install papermill and ipykernel in caller environment
+        run: pip install papermill==2.7.0 ipykernel==7.4.0
+
+      - name: Run notebook using caller environment (install-papermill=false default)
+        uses: ./.github/actions/run-notebook
+        with:
+          notebook: test-notebooks/sample.ipynb
+          parameters: "-p count 5"
+
+      - name: Verify executed notebook
+        run: test -f artifacts/notebooks/sample.ipynb
